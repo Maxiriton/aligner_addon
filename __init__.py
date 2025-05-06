@@ -25,9 +25,10 @@ bl_info = {
 import bpy
 import bmesh
 import gpu
+from os.path import splitext
 from mathutils import Vector
-from bpy.types import Operator, Panel
-from bpy.props import BoolProperty, FloatVectorProperty
+from bpy.types import Operator, Panel, AddonPreferences
+from bpy.props import BoolProperty, FloatVectorProperty, FloatProperty
 from gpu_extras.batch import batch_for_shader
 
 
@@ -48,6 +49,37 @@ class VertexPlaneAligner(bpy.types.PropertyGroup):
     p3 = FloatVectorProperty(name="Point 3")
     normal = FloatVectorProperty(name="Normal")
     
+
+class ALIGNER_prefs(AddonPreferences):
+    bl_idname = __package__
+
+    axis_line_color : FloatVectorProperty(
+        name="Axis Color",
+        subtype='COLOR', 
+        default=[1.0,1.0,1.0]
+    ) # type: ignore
+
+    axis_line_width : FloatProperty(
+        name="Axis Line Width",
+        default=1.0,
+        min=0.1
+    ) # type: ignore
+
+    axis_line_length : FloatProperty(
+        name="Axis Line Length",
+        default=0.1,
+        min=0.1
+    ) # type: ignore
+
+    def draw(self, context):
+        layout = self.layout
+        row= layout.row()
+        row.prop(self, "axis_line_color")
+        row= layout.row()
+        row.prop(self, "axis_line_width")
+        row= layout.row()
+        row.prop(self, "axis_line_length")
+
 
 class OBJECT_OT_define_axis(Operator):
     """Define Axis using Selected 2 Vertices"""
@@ -74,7 +106,7 @@ class OBJECT_OT_define_axis(Operator):
         aa.p2 = Vector(selected_verts[1].co)
         aa.axis = (selected_verts[1].co - selected_verts[0].co).normalized()
         aa.axis_defined = True
-        aa.is_diplayed = False
+        aa.is_diplayed = True
         bmesh.update_edit_mesh(context.object.data)
         self.report({'INFO'}, f"Axis Defined Successfully : {aa.axis}")
         return {'FINISHED'}
@@ -207,11 +239,20 @@ class VIEW3D_PT_vertex_aligner_planarizer_panel(Panel):
 
 
 def draw_axis():
+    addon_name = splitext(__name__)[0]
+    # addon_name = 'bl_ext.vscode_development.aligner_addon'
+    preferences = bpy.context.preferences
+    addon_prefs = preferences.addons[addon_name].preferences
+
+    color1 =addon_prefs.axis_line_color[:] + (0.0,)
+    color2 =addon_prefs.axis_line_color[:] + (0.01,)
+    mul = addon_prefs.axis_line_length
+
     try: 
         aa =  bpy.context.scene.axis_aligner
         if aa.axis_defined == True and aa.is_displayed == True:
-            coords = [aa.p1-aa.axis, aa.p1,aa.p1, aa.p2, aa.p2, aa.p2+aa.axis] 
-            colors = [(1,0,0,0.0), (1,0,0, 0.1),(1,0.0,0, 0.1),(1,0,0, 0.1),(1,0,0,0.1),(1,0,0,0.0)]
+            coords = [aa.p1-aa.axis*mul, aa.p1,aa.p1, aa.p2, aa.p2, aa.p2+aa.axis*mul] 
+            colors = [ color1, color2,color2,color2,color2,color1]
         else: 
             coords = []
             colors = []
@@ -219,12 +260,13 @@ def draw_axis():
         coords = []
         colors = []
     shader = gpu.shader.from_builtin('POLYLINE_SMOOTH_COLOR')
-    shader.uniform_float('lineWidth', 1)
+    shader.uniform_float('lineWidth', addon_prefs.axis_line_width)
     batch = batch_for_shader(shader,'LINES', {"pos": coords,"color": colors})
     batch.draw(shader)
 
 ### Registration
 classes = (
+    ALIGNER_prefs,
     VertexAxisAligner,
     VertexPlaneAligner,
     OBJECT_OT_define_axis,
