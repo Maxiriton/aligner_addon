@@ -210,7 +210,6 @@ def draw_axis():
     try: 
         aa =  bpy.context.scene.axis_aligner
         if aa.axis_defined == True and aa.is_displayed == True:
-            print("on est là")
             coords = [aa.p1-aa.axis, aa.p1,aa.p1, aa.p2, aa.p2, aa.p2+aa.axis] 
             colors = [(1,0,0,0.0), (1,0,0, 0.1),(1,0.0,0, 0.1),(1,0,0, 0.1),(1,0,0,0.1),(1,0,0,0.0)]
         else: 
