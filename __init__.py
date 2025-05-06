@@ -12,11 +12,11 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 bl_info = {
-    "name": "Vertex Aligner & Planarizer",
+    "name": "Vertex Aligner & Planarizer ",
     "author": "Benjamin Louis, Henri Hebeisen",
     "description": "Align vertices to custom axis and planarize selected vertices.",
     "blender": (4, 3, 2),
-    "version": (0, 0, 1),
+    "version": (0, 0, 2),
     "location": "",
     "warning": "",
     "category": "Mesh",
@@ -24,20 +24,24 @@ bl_info = {
 
 import bpy
 import bmesh
+import gpu
 from mathutils import Vector
-from bpy.types import Operator, PropertyGroup, Panel
+from bpy.types import Operator, Panel
 from bpy.props import BoolProperty, FloatVectorProperty
+from gpu_extras.batch import batch_for_shader
 
 
 # Storage Classes
 
-class VertexAxisAligner(PropertyGroup):
+class VertexAxisAligner(bpy.types.PropertyGroup):
     axis_defined = BoolProperty(name="Axis Defined", default=False)
+    # is_displayed = BoolProperty(name="Axis Displayed", default=False)
+    is_displayed = BoolProperty(name="Axis Displayed", default=False)
     p1 = FloatVectorProperty(name="Point 1")
     p2 = FloatVectorProperty(name="Point 2")
     axis = FloatVectorProperty(name="Axis")
 
-class VertexPlaneAligner(PropertyGroup):
+class VertexPlaneAligner(bpy.types.PropertyGroup):
     plane_defined = BoolProperty(name="Plane Defined", default=False)
     p1 = FloatVectorProperty(name="Point 1")
     p2 = FloatVectorProperty(name="Point 2")
@@ -70,6 +74,7 @@ class OBJECT_OT_define_axis(Operator):
         aa.p2 = Vector(selected_verts[1].co)
         aa.axis = (selected_verts[1].co - selected_verts[0].co).normalized()
         aa.axis_defined = True
+        aa.is_diplayed = False
         bmesh.update_edit_mesh(context.object.data)
         self.report({'INFO'}, f"Axis Defined Successfully : {aa.axis}")
         return {'FINISHED'}
@@ -103,6 +108,22 @@ class OBJECT_OT_align_vertices_on_axis(Operator):
         bmesh.update_edit_mesh(obj.data)
         self.report({'INFO'}, "Vertices Aligned Successfully.")
         return {'FINISHED'}
+
+class OBJECT_OT_display_axis(Operator):
+    """Add an overlay axis to visualize the axes"""
+    bl_idname = "mesh.display_axis"
+    bl_label = "Align"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return  context.mode == 'EDIT_MESH' and context.scene.axis_aligner.axis_defined is True
+    
+    def execute(self, context):
+        context.scene.axis_aligner.is_displayed =  not context.scene.axis_aligner.is_displayed
+        bpy.ops.wm.redraw_timer(iterations=1)
+        return {'FINISHED'}
+    
 
 # --- Operator Classes for PLANARIZER --- #
 
@@ -171,12 +192,12 @@ class VIEW3D_PT_vertex_aligner_planarizer_panel(Panel):
 
     def draw(self, context):
         layout = self.layout
-
         # ALIGNER section
         layout.label(text="ALIGNER: Select 2 vertices to define axis.")
         row = layout.row()  # Creates a row for side-by-side buttons
         row.operator("mesh.define_axis", text="Set Axis", icon="EMPTY_AXIS")
         row.operator("mesh.align_vertices", text="Align", icon="SNAP_MIDPOINT")
+        row.operator("mesh.display_axis", text="", icon="HIDE_OFF")
 
         # PLANARIZER section
         layout.label(text="PLANARIZER: Select 3 vertices to define plane.")
@@ -185,15 +206,34 @@ class VIEW3D_PT_vertex_aligner_planarizer_panel(Panel):
         row.operator("object.apply_planarize", text="Planarize", icon="SNAP_FACE_CENTER")
 
 
+def draw_axis():
+    try: 
+        aa =  bpy.context.scene.axis_aligner
+        if aa.axis_defined == True and aa.is_displayed == True:
+            print("on est là")
+            coords = [aa.p1-aa.axis, aa.p1,aa.p1, aa.p2, aa.p2, aa.p2+aa.axis] 
+            colors = [(1,0,0,0.0), (1,0,0, 0.1),(1,0.0,0, 0.1),(1,0,0, 0.1),(1,0,0,0.1),(1,0,0,0.0)]
+        else: 
+            coords = []
+            colors = []
+    except: 
+        coords = []
+        colors = []
+    shader = gpu.shader.from_builtin('POLYLINE_SMOOTH_COLOR')
+    shader.uniform_float('lineWidth', 1)
+    batch = batch_for_shader(shader,'LINES', {"pos": coords,"color": colors})
+    batch.draw(shader)
+
 ### Registration
 classes = (
+    VertexAxisAligner,
+    VertexPlaneAligner,
     OBJECT_OT_define_axis,
     OBJECT_OT_align_vertices_on_axis,
+    OBJECT_OT_display_axis,
     OBJECT_OT_define_plane,
     OBJECT_OT_planarize_vertices,
-    VIEW3D_PT_vertex_aligner_planarizer_panel,
-    VertexAxisAligner,
-    VertexPlaneAligner
+    VIEW3D_PT_vertex_aligner_planarizer_panel
 )
 
 def register():
@@ -203,6 +243,7 @@ def register():
     bpy.types.Scene.axis_aligner = VertexAxisAligner
     bpy.types.Scene.plane_aligner = VertexPlaneAligner
 
+    bpy.types.SpaceView3D.draw_handler_add(draw_axis, (), 'WINDOW', 'POST_VIEW')
 
 def unregister():
     for cl in reversed(classes):
@@ -210,7 +251,6 @@ def unregister():
 
     del bpy.types.Scene.axis_aligner
     del bpy.types.Scene.plane_aligner
-
 
 if __name__ == "__main__":
     register()

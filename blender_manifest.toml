@@ -3,7 +3,7 @@ schema_version = "1.0.0"
 # Example of manifest file for a Blender extension
 # Change the values according to your extension
 id = "aligner_planarizer"
-version = "0.0.1"
+version = "0.0.2"
 name = "Aligner_planarizer"
 tagline = "Align vertices to custom axis and planarize selected vertices."
 maintainer = "Benjamin Louis, Henri Hebeisen"
